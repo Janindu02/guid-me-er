@@ -1,0 +1,330 @@
+# ER Diagram Description for Blog & News System
+
+## Entity Relationship Diagram
+
+This document provides a detailed description for generating an ER diagram using tools like dbdiagram.io, draw.io, or Lucidchart.
+
+---
+
+## Entities
+
+### 1. User (Optional - if user management exists)
+- **Primary Key:** id (VARCHAR/UUID)
+- **Attributes:**
+  - email (VARCHAR)
+  - fullName (VARCHAR)
+  - avatarUrl (VARCHAR)
+  - createdAt (TIMESTAMP)
+  - updatedAt (TIMESTAMP)
+
+### 2. Blog
+- **Primary Key:** id (VARCHAR/UUID)
+- **Foreign Key:** userId (VARCHAR) → User.id (optional)
+- **Attributes:**
+  - author (VARCHAR(100), NOT NULL)
+  - avatar (VARCHAR(500))
+  - title (VARCHAR(200), NOT NULL)
+  - description (TEXT, NOT NULL)
+  - budget (VARCHAR(50))
+  - tag (VARCHAR(100), NOT NULL)
+  - rating (DECIMAL(2,1), NOT NULL, DEFAULT 0)
+  - likes (INT, DEFAULT 0)
+  - comments (INT, DEFAULT 0)
+  - createdAt (TIMESTAMP, DEFAULT CURRENT_TIMESTAMP)
+  - updatedAt (TIMESTAMP, DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP)
+
+### 3. BlogImage
+- **Primary Key:** id (VARCHAR/UUID)
+- **Foreign Key:** blogId (VARCHAR) → Blog.id
+- **Attributes:**
+  - imageUrl (VARCHAR(500), NOT NULL)
+  - displayOrder (INT, NOT NULL, DEFAULT 0)
+  - createdAt (TIMESTAMP, DEFAULT CURRENT_TIMESTAMP)
+
+### 4. BlogService
+- **Primary Key:** id (VARCHAR/UUID)
+- **Foreign Key:** blogId (VARCHAR) → Blog.id
+- **Attributes:**
+  - serviceName (VARCHAR(100), NOT NULL)
+  - displayOrder (INT, NOT NULL, DEFAULT 0)
+  - createdAt (TIMESTAMP, DEFAULT CURRENT_TIMESTAMP)
+
+### 5. News
+- **Primary Key:** id (VARCHAR/UUID)
+- **Foreign Key:** userId (VARCHAR) → User.id (optional)
+- **Attributes:**
+  - source (VARCHAR(100), NOT NULL)
+  - title (VARCHAR(200), NOT NULL)
+  - summary (TEXT, NOT NULL)
+  - date (DATETIME, NOT NULL) - Auto-generated on creation
+  - url (VARCHAR(500))
+  - createdAt (TIMESTAMP, DEFAULT CURRENT_TIMESTAMP)
+  - updatedAt (TIMESTAMP, DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP)
+
+### 6. NewsImage
+- **Primary Key:** id (VARCHAR/UUID)
+- **Foreign Key:** newsId (VARCHAR) → News.id
+- **Attributes:**
+  - imageUrl (VARCHAR(500), NOT NULL)
+  - displayOrder (INT, NOT NULL, DEFAULT 0)
+  - createdAt (TIMESTAMP, DEFAULT CURRENT_TIMESTAMP)
+
+---
+
+## Relationships
+
+### 1. User → Blog
+- **Type:** One-to-Many (1:N)
+- **Cardinality:** One User can have many Blogs
+- **Optional:** Yes (if user management exists)
+- **On Delete:** CASCADE (if user is deleted, delete their blogs)
+
+### 2. User → News
+- **Type:** One-to-Many (1:N)
+- **Cardinality:** One User can have many News articles
+- **Optional:** Yes (if user management exists)
+- **On Delete:** CASCADE (if user is deleted, delete their news)
+
+### 3. Blog → BlogImage
+- **Type:** One-to-Many (1:N)
+- **Cardinality:** One Blog can have many BlogImages (max 10)
+- **On Delete:** CASCADE (if blog is deleted, delete all images)
+
+### 4. Blog → BlogService
+- **Type:** One-to-Many (1:N)
+- **Cardinality:** One Blog can have many BlogServices (max 6)
+- **On Delete:** CASCADE (if blog is deleted, delete all services)
+
+### 5. News → NewsImage
+- **Type:** One-to-Many (1:N)
+- **Cardinality:** One News article can have many NewsImages (max 10)
+- **On Delete:** CASCADE (if news is deleted, delete all images)
+
+---
+
+## ER Diagram Code for dbdiagram.io
+
+```sql
+// Copy this code to https://dbdiagram.io
+
+Table User {
+  id varchar [primary key]
+  email varchar
+  fullName varchar
+  avatarUrl varchar
+  createdAt timestamp
+  updatedAt timestamp
+}
+
+Table Blog {
+  id varchar [primary key]
+  userId varchar [ref: > User.id, note: 'Optional']
+  author varchar(100) [not null]
+  avatar varchar(500)
+  title varchar(200) [not null]
+  description text [not null]
+  budget varchar(50)
+  tag varchar(100) [not null]
+  rating decimal(2,1) [not null, default: 0]
+  likes int [default: 0]
+  comments int [default: 0]
+  createdAt timestamp [default: `CURRENT_TIMESTAMP`]
+  updatedAt timestamp [default: `CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP`]
+  
+  Note: 'Travel blog posts with ratings, categories, and services'
+}
+
+Table BlogImage {
+  id varchar [primary key]
+  blogId varchar [ref: > Blog.id, note: 'CASCADE DELETE']
+  imageUrl varchar(500) [not null]
+  displayOrder int [not null, default: 0]
+  createdAt timestamp [default: `CURRENT_TIMESTAMP`]
+  
+  Note: 'Images for blog posts (max 10 per blog)'
+}
+
+Table BlogService {
+  id varchar [primary key]
+  blogId varchar [ref: > Blog.id, note: 'CASCADE DELETE']
+  serviceName varchar(100) [not null]
+  displayOrder int [not null, default: 0]
+  createdAt timestamp [default: `CURRENT_TIMESTAMP`]
+  
+  Note: 'Services associated with blog (max 6 per blog)'
+}
+
+Table News {
+  id varchar [primary key]
+  userId varchar [ref: > User.id, note: 'Optional']
+  source varchar(100) [not null]
+  title varchar(200) [not null]
+  summary text [not null]
+  date datetime [not null, note: 'Auto-generated on creation']
+  url varchar(500)
+  createdAt timestamp [default: `CURRENT_TIMESTAMP`]
+  updatedAt timestamp [default: `CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP`]
+  
+  Note: 'News articles with auto-generated publication date'
+}
+
+Table NewsImage {
+  id varchar [primary key]
+  newsId varchar [ref: > News.id, note: 'CASCADE DELETE']
+  imageUrl varchar(500) [not null]
+  displayOrder int [not null, default: 0]
+  createdAt timestamp [default: `CURRENT_TIMESTAMP`]
+  
+  Note: 'Images for news articles (max 10 per news)'
+}
+```
+
+---
+
+## Visual Representation (ASCII Art)
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    BLOG & NEWS SYSTEM                        │
+└─────────────────────────────────────────────────────────────┘
+
+                    ┌──────────────┐
+                    │     User     │
+                    │──────────────│
+                    │ id (PK)      │
+                    │ email        │
+                    │ fullName     │
+                    │ avatarUrl    │
+                    └──────┬───────┘
+                           │
+            ┌──────────────┼──────────────┐
+            │ (1:N)        │              │ (1:N)
+            │              │              │
+    ┌───────▼──────┐       │      ┌───────▼──────┐
+    │     Blog     │       │      │     News     │
+    │──────────────│       │      │──────────────│
+    │ id (PK)      │       │      │ id (PK)      │
+    │ userId (FK)  │◄──────┘      │ userId (FK)  │◄──────┘
+    │ author       │              │ source       │
+    │ avatar       │              │ title        │
+    │ title        │              │ summary      │
+    │ description  │              │ date         │
+    │ budget       │              │ url          │
+    │ tag          │              │ createdAt    │
+    │ rating       │              │ updatedAt    │
+    │ likes        │              └──────┬───────┘
+    │ comments     │                     │
+    │ createdAt    │                     │ (1:N)
+    │ updatedAt    │                     │
+    └──────┬───────┘                     │
+           │                             │
+    ┌──────┼──────┐              ┌───────▼───────┐
+    │ (1:N)│      │ (1:N)        │  NewsImage    │
+    │      │      │              │───────────────│
+    │      │      │              │ id (PK)       │
+┌───▼──────▼──┐  │              │ newsId (FK)   │
+│ BlogImage   │  │              │ imageUrl      │
+│─────────────│  │              │ displayOrder  │
+│ id (PK)     │  │              └───────────────┘
+│ blogId (FK) │◄─┘
+│ imageUrl    │
+│ displayOrder│
+└─────────────┘
+    │
+    │
+┌───▼──────────────┐
+│  BlogService     │
+│─────────────────│
+│ id (PK)         │
+│ blogId (FK)     │◄─┘
+│ serviceName     │
+│ displayOrder    │
+└─────────────────┘
+```
+
+---
+
+## Key Constraints
+
+1. **Blog.rating**: Must be between 0.0 and 5.0 with 0.5 precision
+2. **BlogImage**: Maximum 10 images per blog
+3. **BlogService**: Maximum 6 services per blog
+4. **NewsImage**: Maximum 10 images per news article
+5. **News.date**: Auto-generated on creation, preserved on update
+6. **Cascade Deletes**: 
+   - Deleting Blog → deletes all BlogImages and BlogServices
+   - Deleting News → deletes all NewsImages
+   - Deleting User → deletes all Blogs and News (if user management exists)
+
+---
+
+## Indexes (for Performance)
+
+### Blog Table
+- INDEX idx_user_id (userId)
+- INDEX idx_tag (tag)
+- INDEX idx_rating (rating)
+- INDEX idx_created_at (createdAt)
+
+### News Table
+- INDEX idx_user_id (userId)
+- INDEX idx_source (source)
+- INDEX idx_date (date)
+- INDEX idx_created_at (createdAt)
+
+### BlogImage Table
+- INDEX idx_blog_id (blogId)
+
+### NewsImage Table
+- INDEX idx_news_id (newsId)
+
+### BlogService Table
+- INDEX idx_blog_id (blogId)
+
+---
+
+## Alternative: Denormalized Approach
+
+If you prefer simpler queries, you can store images and services as JSON arrays:
+
+### Blog Table (Denormalized)
+- `images` JSON array
+- `services` JSON array
+
+### News Table (Denormalized)
+- `images` JSON array
+
+This approach:
+- ✅ Simpler queries (no joins needed)
+- ✅ Faster reads
+- ❌ Harder to query individual images/services
+- ❌ Less normalized (violates 1NF if you need to query services separately)
+
+---
+
+## Usage Instructions
+
+1. **For dbdiagram.io:**
+   - Go to https://dbdiagram.io
+   - Click "Create New Diagram"
+   - Paste the SQL code from the "ER Diagram Code" section above
+   - Click "Generate" to create the visual diagram
+
+2. **For draw.io / diagrams.net:**
+   - Go to https://app.diagrams.net
+   - Create a new diagram
+   - Use the entity descriptions and relationships above
+   - Draw entities as rectangles
+   - Draw relationships as lines with cardinality labels
+
+3. **For Lucidchart:**
+   - Create a new ER diagram
+   - Add entities using the descriptions above
+   - Connect entities with relationships
+   - Add cardinality labels (1:N)
+
+---
+
+**Document Version:** 1.0  
+**Last Updated:** 2025-01-15
+
