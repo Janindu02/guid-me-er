@@ -1,0 +1,944 @@
+# Blog and News Microservice - Backend Specification
+
+## Table of Contents
+1. [System Overview](#system-overview)
+2. [Entities and Data Models](#entities-and-data-models)
+3. [Database Schema (ER Diagram)](#database-schema-er-diagram)
+4. [API Endpoints](#api-endpoints)
+5. [Business Logic & Features](#business-logic--features)
+6. [File Upload Requirements](#file-upload-requirements)
+7. [Sorting & Filtering](#sorting--filtering)
+8. [Implementation Guidelines](#implementation-guidelines)
+
+---
+
+## System Overview
+
+The Blog and News microservice is a content management system that allows users to:
+- Create, read, update travel blog posts
+- Create, read, update news articles
+- Upload multiple images per post
+- Categorize blog posts with preset or custom categories
+- Rate blog posts (0-5 stars with 0.5 precision)
+- Track likes and comments (counts)
+- Filter and sort posts by various criteria
+- Share posts via social media
+
+### Key Distinctions
+
+**Blog Posts:**
+- User-generated travel experiences
+- Includes author information (name, avatar)
+- Has rating, budget, category/tag, services
+- Supports likes and comments
+- Time displayed as relative (e.g., "2 hours ago", "yesterday")
+
+**News Articles:**
+- Official news/updates from sources
+- Includes source organization name
+- Has publication date (auto-generated on creation)
+- No rating, budget, or services
+- Time displayed as formatted date (e.g., "Oct 25, 2025")
+
+---
+
+## Entities and Data Models
+
+### 1. Blog Entity
+
+```typescript
+interface Blog {
+  id: string;                    // UUID or unique identifier
+  author: string;                 // Author's full name
+  avatar?: string;               // URL to author's avatar image
+  title: string;                 // Blog post title (required)
+  description: string;           // Full blog content/description (required)
+  budget?: string;               // Optional budget (e.g., "$800")
+  tag: string;                   // Category/tag (required)
+  rating: number;                // Personal rating 0-5 (0.5 precision)
+  images: string[];              // Array of image URLs
+  services?: string[];          // Array of service names (max 6)
+  likes?: number;                // Count of likes (default: 0)
+  comments?: number;             // Count of comments (default: 0)
+  createdAt: Date;               // Auto-generated creation timestamp
+  updatedAt: Date;               // Auto-updated modification timestamp
+  userId?: string;               // Reference to user who created (for authorization)
+}
+```
+
+**Validation Rules:**
+- `title`: Required, string, max 200 characters
+- `description`: Required, string, max 5000 characters
+- `budget`: Optional, string, max 50 characters
+- `tag`: Required, string, max 100 characters
+- `rating`: Required, number, 0-5, precision 0.5
+- `images`: Array, max 10 images per post
+- `services`: Array, max 6 services, each max 100 characters
+- `author`: Required, string, max 100 characters
+- `avatar`: Optional, valid image URL
+
+**Preset Categories:**
+- "Mountains & Hiking"
+- "Beach & Coast"
+- "Cultural Sites"
+- "Food & Dining"
+- "Adventure Sports"
+- Custom categories are also allowed
+
+---
+
+### 2. News Entity
+
+```typescript
+interface News {
+  id: string;                    // UUID or unique identifier
+  source: string;                // News source organization (required)
+  title: string;                 // News article title (required)
+  summary: string;               // News summary/content (required)
+  date: string;                  // Publication date (ISO 8601 format, auto-generated)
+  images: string[];              // Array of image URLs
+  url?: string;                  // Optional external URL
+  createdAt: Date;              // Auto-generated creation timestamp
+  updatedAt: Date;              // Auto-updated modification timestamp
+  userId?: string;              // Reference to user who created (for authorization)
+}
+```
+
+**Validation Rules:**
+- `title`: Required, string, max 200 characters
+- `summary`: Required, string, max 2000 characters
+- `source`: Required, string, max 100 characters
+- `date`: Auto-generated on creation (ISO 8601: "YYYY-MM-DDTHH:mm")
+- `images`: Array, max 10 images per article
+- `url`: Optional, valid URL format
+
+**Important:** The `date` field is automatically set to the current timestamp when creating a news article. It should NOT be editable by users. When updating a news article, preserve the original `date` value.
+
+---
+
+### 3. Blog Image Entity (Optional - for better normalization)
+
+```typescript
+interface BlogImage {
+  id: string;
+  blogId: string;               // Foreign key to Blog
+  imageUrl: string;             // URL to stored image
+  order: number;                // Display order (0-based)
+  createdAt: Date;
+}
+```
+
+### 4. News Image Entity (Optional - for better normalization)
+
+```typescript
+interface NewsImage {
+  id: string;
+  newsId: string;               // Foreign key to News
+  imageUrl: string;             // URL to stored image
+  order: number;                // Display order (0-based)
+  createdAt: Date;
+}
+```
+
+### 5. Blog Service Entity (Optional - for better normalization)
+
+```typescript
+interface BlogService {
+  id: string;
+  blogId: string;               // Foreign key to Blog
+  serviceName: string;          // Service name (e.g., "Tour Guide")
+  order: number;                 // Display order
+  createdAt: Date;
+}
+```
+
+---
+
+## Database Schema (ER Diagram)
+
+### Entity Relationship Diagram Description
+
+```
+┌─────────────┐
+│    User     │ (if user management exists)
+│─────────────│
+│ id (PK)     │
+│ ...         │
+└──────┬──────┘
+       │
+       │ (1:N)
+       │
+┌──────▼──────┐         ┌──────────────┐
+│    Blog     │         │  BlogImage   │
+│─────────────│         │──────────────│
+│ id (PK)     │◄────────│ id (PK)      │
+│ userId (FK) │   1:N   │ blogId (FK)   │
+│ author      │         │ imageUrl      │
+│ avatar      │         │ order         │
+│ title       │         └──────────────┘
+│ description │
+│ budget      │         ┌──────────────┐
+│ tag         │         │ BlogService   │
+│ rating      │         │──────────────│
+│ likes       │         │ id (PK)      │
+│ comments    │         │ blogId (FK)  │
+│ createdAt   │◄────────│ serviceName  │
+│ updatedAt   │   1:N   │ order        │
+└─────────────┘         └──────────────┘
+
+┌─────────────┐         ┌──────────────┐
+│    News     │         │  NewsImage   │
+│─────────────│         │──────────────│
+│ id (PK)     │         │ id (PK)      │
+│ userId (FK) │         │ newsId (FK)  │
+│ source      │◄────────│ imageUrl     │
+│ title       │   1:N   │ order        │
+│ summary     │         └──────────────┘
+│ date        │
+│ url         │
+│ createdAt   │
+│ updatedAt   │
+└─────────────┘
+```
+
+### Database Tables (SQL-like Schema)
+
+#### Blogs Table
+```sql
+CREATE TABLE blogs (
+    id VARCHAR(36) PRIMARY KEY,
+    user_id VARCHAR(36),                    -- FK to users table (if exists)
+    author VARCHAR(100) NOT NULL,
+    avatar VARCHAR(500),                     -- URL to avatar image
+    title VARCHAR(200) NOT NULL,
+    description TEXT NOT NULL,               -- Up to 5000 chars
+    budget VARCHAR(50),
+    tag VARCHAR(100) NOT NULL,
+    rating DECIMAL(2,1) NOT NULL DEFAULT 0, -- 0.0 to 5.0, precision 0.5
+    likes INT DEFAULT 0,
+    comments INT DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_user_id (user_id),
+    INDEX idx_tag (tag),
+    INDEX idx_rating (rating),
+    INDEX idx_created_at (created_at)
+);
+```
+
+#### News Table
+```sql
+CREATE TABLE news (
+    id VARCHAR(36) PRIMARY KEY,
+    user_id VARCHAR(36),                    -- FK to users table (if exists)
+    source VARCHAR(100) NOT NULL,
+    title VARCHAR(200) NOT NULL,
+    summary TEXT NOT NULL,                   -- Up to 2000 chars
+    date DATETIME NOT NULL,                 -- Auto-generated on creation
+    url VARCHAR(500),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_user_id (user_id),
+    INDEX idx_source (source),
+    INDEX idx_date (date),
+    INDEX idx_created_at (created_at)
+);
+```
+
+#### Blog Images Table (Normalized Approach)
+```sql
+CREATE TABLE blog_images (
+    id VARCHAR(36) PRIMARY KEY,
+    blog_id VARCHAR(36) NOT NULL,
+    image_url VARCHAR(500) NOT NULL,
+    display_order INT NOT NULL DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (blog_id) REFERENCES blogs(id) ON DELETE CASCADE,
+    INDEX idx_blog_id (blog_id)
+);
+```
+
+#### News Images Table (Normalized Approach)
+```sql
+CREATE TABLE news_images (
+    id VARCHAR(36) PRIMARY KEY,
+    news_id VARCHAR(36) NOT NULL,
+    image_url VARCHAR(500) NOT NULL,
+    display_order INT NOT NULL DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (news_id) REFERENCES news(id) ON DELETE CASCADE,
+    INDEX idx_news_id (news_id)
+);
+```
+
+#### Blog Services Table (Normalized Approach)
+```sql
+CREATE TABLE blog_services (
+    id VARCHAR(36) PRIMARY KEY,
+    blog_id VARCHAR(36) NOT NULL,
+    service_name VARCHAR(100) NOT NULL,
+    display_order INT NOT NULL DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (blog_id) REFERENCES blogs(id) ON DELETE CASCADE,
+    INDEX idx_blog_id (blog_id)
+);
+```
+
+**Alternative Approach (Denormalized):**
+If you prefer simpler queries, you can store images and services as JSON arrays in the main tables:
+- `blogs.images` as JSON array
+- `blogs.services` as JSON array
+- `news.images` as JSON array
+
+---
+
+## API Endpoints
+
+### Base URL
+```
+/api/v1/blogs
+```
+
+### Blog Endpoints
+
+#### 1. Get All Blogs
+```
+GET /api/v1/blogs
+```
+
+**Query Parameters:**
+- `page` (optional): Page number for pagination (default: 1)
+- `limit` (optional): Items per page (default: 20, max: 100)
+- `tag` (optional): Filter by category/tag
+- `sortBy` (optional): Sort order - "latest", "oldest", "rating-high", "rating-low" (default: "latest")
+- `author` (optional): Filter by author name
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": "uuid-here",
+      "author": "Michael Chen",
+      "avatar": "https://example.com/avatar.jpg",
+      "title": "Mountain Hiking Adventure",
+      "description": "An unforgettable hiking experience...",
+      "budget": "$800",
+      "tag": "Mountains & Hiking",
+      "rating": 4.5,
+      "images": ["url1", "url2"],
+      "services": ["Tour Guide", "Camping Gear"],
+      "likes": 189,
+      "comments": 32,
+      "createdAt": "2025-01-15T10:30:00Z",
+      "updatedAt": "2025-01-15T10:30:00Z"
+    }
+  ],
+  "pagination": {
+    "page": 1,
+    "limit": 20,
+    "total": 100,
+    "totalPages": 5
+  }
+}
+```
+
+#### 2. Get Blog by ID
+```
+GET /api/v1/blogs/:id
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "id": "uuid-here",
+    "author": "Michael Chen",
+    "avatar": "https://example.com/avatar.jpg",
+    "title": "Mountain Hiking Adventure",
+    "description": "Full description...",
+    "budget": "$800",
+    "tag": "Mountains & Hiking",
+    "rating": 4.5,
+    "images": ["url1", "url2"],
+    "services": ["Tour Guide", "Camping Gear"],
+    "likes": 189,
+    "comments": 32,
+    "createdAt": "2025-01-15T10:30:00Z",
+    "updatedAt": "2025-01-15T10:30:00Z"
+  }
+}
+```
+
+#### 3. Create Blog
+```
+POST /api/v1/blogs
+Content-Type: multipart/form-data
+```
+
+**Request Body (FormData):**
+- `title` (string, required)
+- `description` (string, required)
+- `budget` (string, optional)
+- `tag` (string, required)
+- `author` (string, required)
+- `avatar` (File or string URL, optional)
+- `rating` (string number, required, 0-5)
+- `services` (JSON string array, optional, max 6 items)
+- `images` (File[], required, max 10 files)
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "id": "new-uuid",
+    "author": "Michael Chen",
+    "avatar": "https://example.com/avatar.jpg",
+    "title": "Mountain Hiking Adventure",
+    "description": "Full description...",
+    "budget": "$800",
+    "tag": "Mountains & Hiking",
+    "rating": 4.5,
+    "images": ["url1", "url2"],
+    "services": ["Tour Guide", "Camping Gear"],
+    "likes": 0,
+    "comments": 0,
+    "createdAt": "2025-01-15T10:30:00Z",
+    "updatedAt": "2025-01-15T10:30:00Z"
+  }
+}
+```
+
+**Error Response:**
+```json
+{
+  "success": false,
+  "message": "Validation error",
+  "errors": {
+    "title": "Title is required",
+    "rating": "Rating must be between 0 and 5"
+  }
+}
+```
+
+#### 4. Update Blog
+```
+PATCH /api/v1/blogs/:id
+Content-Type: multipart/form-data
+```
+
+**Request Body:** Same as Create Blog (all fields optional except validation)
+
+**Response:** Same as Create Blog
+
+#### 5. Delete Blog (Optional - not in frontend but recommended)
+```
+DELETE /api/v1/blogs/:id
+```
+
+---
+
+### News Endpoints
+
+#### 1. Get All News
+```
+GET /api/v1/blogs/news
+```
+
+**Query Parameters:**
+- `page` (optional): Page number (default: 1)
+- `limit` (optional): Items per page (default: 20, max: 100)
+- `source` (optional): Filter by source
+- `sortBy` (optional): "latest" or "oldest" (default: "latest")
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": "uuid-here",
+      "source": "Tourism Ministry",
+      "title": "New Visa Rules Eased for Tourists",
+      "summary": "The ministry announced...",
+      "date": "2025-10-25T14:30:00Z",
+      "images": ["url1", "url2"],
+      "url": "#",
+      "createdAt": "2025-10-25T14:30:00Z",
+      "updatedAt": "2025-10-25T14:30:00Z"
+    }
+  ],
+  "pagination": {
+    "page": 1,
+    "limit": 20,
+    "total": 50,
+    "totalPages": 3
+  }
+}
+```
+
+#### 2. Get News by ID
+```
+GET /api/v1/blogs/news/:id
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "id": "uuid-here",
+    "source": "Tourism Ministry",
+    "title": "New Visa Rules Eased for Tourists",
+    "summary": "Full summary...",
+    "date": "2025-10-25T14:30:00Z",
+    "images": ["url1", "url2"],
+    "url": "#",
+    "createdAt": "2025-10-25T14:30:00Z",
+    "updatedAt": "2025-10-25T14:30:00Z"
+  }
+}
+```
+
+#### 3. Create News
+```
+POST /api/v1/blogs/news
+Content-Type: multipart/form-data
+```
+
+**Request Body (FormData):**
+- `title` (string, required)
+- `summary` (string, required)
+- `source` (string, required)
+- `date` (string, ISO 8601 format) - **Auto-generated by backend, ignore if sent**
+- `url` (string, optional)
+- `images` (File[], optional, max 10 files)
+
+**Important:** The `date` field should be automatically set to the current timestamp by the backend, regardless of what the client sends.
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "id": "new-uuid",
+    "source": "Tourism Ministry",
+    "title": "New Visa Rules Eased for Tourists",
+    "summary": "Full summary...",
+    "date": "2025-10-25T14:30:00Z",  // Auto-generated
+    "images": ["url1", "url2"],
+    "url": "#",
+    "createdAt": "2025-10-25T14:30:00Z",
+    "updatedAt": "2025-10-25T14:30:00Z"
+  }
+}
+```
+
+#### 4. Update News
+```
+PATCH /api/v1/blogs/news/:id
+Content-Type: multipart/form-data
+```
+
+**Request Body:** Same as Create News
+
+**Important:** When updating, preserve the original `date` value. Do NOT update it.
+
+**Response:** Same as Create News
+
+#### 5. Delete News (Optional)
+```
+DELETE /api/v1/blogs/news/:id
+```
+
+---
+
+## Business Logic & Features
+
+### 1. Image Upload Handling
+
+**Requirements:**
+- Accept multiple image files (max 10 per post)
+- Support common image formats: JPEG, PNG, GIF, WebP
+- Maximum file size: 5MB per image
+- Store images in cloud storage (AWS S3, Google Cloud Storage, or similar)
+- Return public URLs for stored images
+- Maintain image order (first uploaded = first displayed)
+
+**Implementation Steps:**
+1. Validate file type and size
+2. Generate unique filename (UUID + timestamp)
+3. Upload to storage service
+4. Store URLs in database (as array or in separate table)
+5. Return URLs in response
+
+**Example Image URL Format:**
+```
+https://storage.example.com/blogs/{blogId}/{imageId}.jpg
+https://storage.example.com/news/{newsId}/{imageId}.jpg
+```
+
+### 2. Avatar Upload
+
+- Same as image upload but single file
+- If avatar is a URL string (existing), use as-is
+- If avatar is a File, upload and return URL
+
+### 3. Date Handling for News
+
+**Creation:**
+```javascript
+// Backend should auto-generate date
+const newsDate = new Date().toISOString(); // "2025-10-25T14:30:00Z"
+```
+
+**Update:**
+```javascript
+// Preserve original date
+const existingNews = await getNewsById(id);
+const preservedDate = existingNews.date; // Keep original
+```
+
+### 4. Time Formatting for Blogs
+
+The frontend displays relative time (e.g., "2 hours ago", "yesterday"). The backend should:
+- Store `createdAt` as ISO 8601 timestamp
+- Frontend calculates relative time from `createdAt`
+
+**Frontend Logic:**
+- If `createdAt` exists, use it
+- Otherwise, parse `time` string (fallback)
+
+### 5. Category/Tag System
+
+**Preset Categories:**
+- "Mountains & Hiking"
+- "Beach & Coast"
+- "Cultural Sites"
+- "Food & Dining"
+- "Adventure Sports"
+
+**Custom Categories:**
+- Users can enter any string
+- Store as-is in database
+- No validation needed (just max length)
+
+### 6. Services Array
+
+- Maximum 6 services per blog
+- Each service is a string (max 100 characters)
+- No duplicates (case-insensitive)
+- Stored as JSON array or separate table
+
+### 7. Rating System
+
+- Range: 0.0 to 5.0
+- Precision: 0.5 (0, 0.5, 1.0, 1.5, ..., 5.0)
+- Required for blogs
+- Not applicable for news
+
+### 8. Likes and Comments
+
+**Current Implementation:**
+- Counts only (no individual like/comment records)
+- Increment/decrement on frontend (temporary)
+- Backend should track actual likes/comments for persistence
+
+**Future Enhancement:**
+- Create `blog_likes` table (userId, blogId)
+- Create `blog_comments` table (id, blogId, userId, content, createdAt)
+- Calculate counts from these tables
+
+---
+
+## Sorting & Filtering
+
+### Blog Sorting Options
+
+1. **Latest** (default): Sort by `createdAt` DESC
+2. **Oldest**: Sort by `createdAt` ASC
+3. **Highest Rating**: Sort by `rating` DESC, then `createdAt` DESC
+4. **Lowest Rating**: Sort by `rating` ASC, then `createdAt` DESC
+
+### News Sorting Options
+
+1. **Latest** (default): Sort by `date` DESC
+2. **Oldest**: Sort by `date` ASC
+3. **Rating**: Not applicable (news don't have ratings)
+
+### Filtering
+
+**Blogs:**
+- By category/tag
+- By author
+- By rating range (future)
+
+**News:**
+- By source
+- By date range (future)
+
+### Combined Feed (All Posts)
+
+When `primaryFilter === "all"`:
+- Mix blogs and news together
+- Sort by timestamp (blogs use `createdAt`, news use `date`)
+- Maintain chronological order
+
+---
+
+## Implementation Guidelines
+
+### Technology Stack Recommendations
+
+**Backend Framework:**
+- Node.js + Express / NestJS
+- Python + FastAPI / Django
+- Java + Spring Boot
+- Go + Gin / Echo
+
+**Database:**
+- PostgreSQL (recommended for JSON support)
+- MySQL / MariaDB
+- MongoDB (if you prefer NoSQL)
+
+**File Storage:**
+- AWS S3
+- Google Cloud Storage
+- Azure Blob Storage
+- Local storage (development only)
+
+**Authentication (if needed):**
+- JWT tokens
+- OAuth 2.0
+- Session-based
+
+### Code Structure Example (Node.js/Express)
+
+```
+blog-news-service/
+├── src/
+│   ├── controllers/
+│   │   ├── blogController.js
+│   │   └── newsController.js
+│   ├── services/
+│   │   ├── blogService.js
+│   │   ├── newsService.js
+│   │   └── imageService.js
+│   ├── models/
+│   │   ├── Blog.js
+│   │   ├── News.js
+│   │   ├── BlogImage.js
+│   │   └── NewsImage.js
+│   ├── routes/
+│   │   └── blogRoutes.js
+│   ├── middleware/
+│   │   ├── upload.js
+│   │   └── validation.js
+│   └── utils/
+│       └── dateFormatter.js
+├── config/
+│   └── database.js
+└── package.json
+```
+
+### Key Implementation Points
+
+1. **File Upload Middleware:**
+   - Use `multer` (Node.js) or equivalent
+   - Validate file types and sizes
+   - Handle multiple files
+
+2. **Validation:**
+   - Validate all required fields
+   - Check string lengths
+   - Validate rating range (0-5)
+   - Validate image count (max 10)
+   - Validate services count (max 6)
+
+3. **Error Handling:**
+   - Return consistent error format
+   - Include validation errors
+   - Handle file upload failures gracefully
+
+4. **Security:**
+   - Sanitize user inputs
+   - Validate file types (prevent malicious uploads)
+   - Implement rate limiting
+   - Use authentication for create/update/delete (if needed)
+
+5. **Performance:**
+   - Add database indexes (createdAt, tag, rating, date)
+   - Implement pagination
+   - Use caching for frequently accessed data
+   - Optimize image storage and delivery (CDN)
+
+### Response Format Standard
+
+**Success Response:**
+```json
+{
+  "success": true,
+  "data": { ... },
+  "message": "Optional success message"
+}
+```
+
+**Error Response:**
+```json
+{
+  "success": false,
+  "message": "Error message",
+  "errors": {
+    "field": "Error detail"
+  }
+}
+```
+
+### Date Format
+
+- Store: ISO 8601 format in database (UTC)
+- Return: ISO 8601 format in API responses
+- Example: `"2025-10-25T14:30:00Z"`
+
+---
+
+## Summary Checklist
+
+### Required Features
+- [x] Create, Read, Update Blog posts
+- [x] Create, Read, Update News articles
+- [x] Multiple image upload (max 10 per post)
+- [x] Avatar upload for blogs
+- [x] Category/tag system (preset + custom)
+- [x] Rating system (0-5, 0.5 precision)
+- [x] Services array (max 6)
+- [x] Auto-generate date for news
+- [x] Preserve date on news update
+- [x] Sorting (latest, oldest, rating)
+- [x] Filtering (tag, source)
+- [x] Pagination support
+
+### Database Tables
+- [x] blogs
+- [x] news
+- [x] blog_images (or JSON in blogs)
+- [x] news_images (or JSON in news)
+- [x] blog_services (or JSON in blogs)
+
+### API Endpoints
+- [x] GET /blogs
+- [x] GET /blogs/:id
+- [x] POST /blogs
+- [x] PATCH /blogs/:id
+- [x] GET /blogs/news
+- [x] GET /blogs/news/:id
+- [x] POST /blogs/news
+- [x] PATCH /blogs/news/:id
+
+### File Handling
+- [x] Image upload to cloud storage
+- [x] Avatar upload
+- [x] Image URL storage
+- [x] File validation
+
+---
+
+## ER Diagram (Text Representation)
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                        BLOG & NEWS SYSTEM                    │
+└─────────────────────────────────────────────────────────────┘
+
+┌──────────────┐
+│     User     │ (Optional - if user management exists)
+│──────────────│
+│ id (PK)      │
+│ email        │
+│ fullName     │
+│ avatarUrl    │
+└──────┬───────┘
+       │
+       │ (1:N)
+       │
+┌──────▼──────────────┐
+│       Blog          │
+│────────────────────│
+│ id (PK)            │
+│ userId (FK)        │──┐
+│ author             │  │
+│ avatar             │  │
+│ title              │  │
+│ description        │  │
+│ budget             │  │
+│ tag                │  │
+│ rating             │  │
+│ likes              │  │
+│ comments           │  │
+│ createdAt          │  │
+│ updatedAt          │  │
+└──────┬─────────────┘  │
+       │                │
+       │ (1:N)          │
+       │                │
+┌──────▼─────────────┐ │  ┌──────────────────┐
+│   BlogImage        │ │  │  BlogService      │
+│────────────────────│ │  │──────────────────│
+│ id (PK)            │ │  │ id (PK)          │
+│ blogId (FK)        │◄─┘  │ blogId (FK)      │◄─┘
+│ imageUrl           │     │ serviceName      │
+│ displayOrder       │     │ displayOrder     │
+│ createdAt          │     │ createdAt        │
+└────────────────────┘     └──────────────────┘
+
+┌──────────────┐
+│     News     │
+│──────────────│
+│ id (PK)      │
+│ userId (FK)  │──┐
+│ source       │  │
+│ title        │  │
+│ summary      │  │
+│ date         │  │ (Auto-generated, not editable)
+│ url          │  │
+│ createdAt    │  │
+│ updatedAt    │  │
+└──────┬───────┘  │
+       │          │
+       │ (1:N)    │
+       │          │
+┌──────▼──────────┘
+│   NewsImage      │
+│──────────────────│
+│ id (PK)          │
+│ newsId (FK)      │◄─┘
+│ imageUrl         │
+│ displayOrder     │
+│ createdAt        │
+└──────────────────┘
+```
+
+---
+
+## Next Steps for Implementation
+
+1. **Set up database schema** using the SQL provided above
+2. **Create API endpoints** following the specification
+3. **Implement file upload** service (cloud storage integration)
+4. **Add validation** for all inputs
+5. **Implement sorting and filtering** logic
+6. **Add pagination** support
+7. **Test all endpoints** with Postman or similar
+8. **Deploy** to staging environment
+9. **Integrate** with frontend
+10. **Monitor and optimize** performance
+
+---
+
+**Document Version:** 1.0  
+**Last Updated:** 2025-01-15  
+**Author:** Backend Specification Generator
+
